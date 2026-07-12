@@ -8,7 +8,7 @@ knowledge of a card's later activity.
 import numpy as np
 import pandas as pd
 
-from fuelguard import features, fuel_data, rules
+from fuelguard import features, fuel_data, metrics, model, rules, scoring
 
 
 def _frame():
@@ -98,3 +98,51 @@ def test_mock_contains_every_typology():
     # legitimate fills never exceed the tank
     legit = df[df["is_fraud"] == 0]
     assert (legit["gallons"] <= legit["tank_capacity"]).all()
+
+
+def test_time_split_orders_by_time():
+    df = fuel_data.mock_fuel_frame(n_fleets=10, days=40, seed=1)
+    feat, _ = features.build_features(df)
+    train, test = model.time_split(feat, 0.6)
+    assert train["ts"].max() <= test["ts"].min()
+
+
+def test_model_ranks_and_adds_value_over_rules():
+    df = fuel_data.mock_fuel_frame(seed=7)
+    feat, cols = features.build_features(df)
+    train, test = model.time_split(feat, 0.6)
+    clf = model.train_model(train, cols)
+    p = model.score_model(clf, test, cols)
+    y = test["is_fraud"].to_numpy()
+    # well clear of the low-single-percent base rate
+    assert metrics.pr_auc(y, p) > 0.5
+    # the model catches evasive fraud that stays under the rule thresholds
+    rt = rules.apply_rules(test)
+    ev = (test["fraud_type"] == "evasive").to_numpy()
+    rules_ev = rt["rules_flag"].to_numpy()[ev].mean()
+    model_ev = (p[ev] >= 0.5).mean()
+    assert model_ev > rules_ev
+
+
+def test_hard_rule_forces_decline():
+    df = fuel_data.mock_fuel_frame(n_fleets=10, days=40, seed=2)
+    feat, _ = features.build_features(df)
+    rt = rules.apply_rules(feat)
+    dec = scoring.decide(np.zeros(len(feat)), rt)  # model says zero risk everywhere
+    hard = rt["rules_hard_flag"].to_numpy() == 1
+    assert (dec[hard] == "decline").all()
+    clean = (~hard) & (rt["rules_flag"].to_numpy() == 0)
+    assert (dec[clean] == "approve").all()
+
+
+def test_value_at_budget_is_monotone():
+    df = fuel_data.mock_fuel_frame(n_fleets=12, days=40, seed=3)
+    feat, cols = features.build_features(df)
+    train, test = model.time_split(feat, 0.6)
+    clf = model.train_model(train, cols)
+    test = test.copy()
+    test["p"] = model.score_model(clf, test, cols)
+    test["exp_loss"] = test["p"] * test["amount"]
+    vb = metrics.value_at_budget(test, "exp_loss", fractions=(0.01, 0.05, 0.1, 0.2))
+    r = vb["fraud_value_recall"].to_numpy()
+    assert all(r[i] <= r[i + 1] + 1e-9 for i in range(len(r) - 1))

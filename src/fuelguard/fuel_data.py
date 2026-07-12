@@ -151,7 +151,8 @@ def mock_fuel_frame(n_fleets: int = 40, days: int = 60, seed: int = 7) -> pd.Dat
                 break
             odo += leg * rng.uniform(1.0, 1.15)
             gallons = min(leg / d["mpg"] * rng.uniform(0.95, 1.05), d["tank"])
-            emit(d, t, nxt, "diesel", gallons, odo, "chip", 0)
+            entry = "manual" if rng.random() < 0.08 else "chip"
+            emit(d, t, nxt, "diesel", gallons, odo, entry, 0)
             cur = nxt
     n_legit = len(rows)
 
@@ -253,6 +254,24 @@ def mock_fuel_frame(n_fleets: int = 40, days: int = 60, seed: int = 7) -> pd.Dat
         hub_i = HUBS.index(next(h for h in HUBS if h[0] == anchor["hub"]))
         emit(d, t, hub_i, "diesel", min(d["tank"] * rng.uniform(0.8, 1.0), d["tank"]),
              anchor["odometer"] + rng.uniform(10, 70), "chip", 1, "implausible_mpg")
+
+    # evasive: every signal kept under its rule threshold, anomalous only together.
+    # A near-tank fill, at night, keyed in by hand, well above the card's usual spend,
+    # with an economy that is low but not impossible. No single rule fires; the pattern
+    # does. This is what the model is for.
+    for _ in range(n_each):
+        ctx = random_context()
+        if not ctx:
+            continue
+        d, anchor = ctx
+        base_s = secs(anchor["ts"]) + rng.uniform(4, 20) * 3600
+        day = int(base_s // 86_400)
+        night_ts = REF_DATE + pd.Timedelta(days=day, hours=int(rng.integers(0, 5)),
+                                            minutes=int(rng.integers(0, 60)))
+        hub_i = HUBS.index(next(h for h in HUBS if h[0] == anchor["hub"]))
+        gal = d["tank"] * rng.uniform(0.92, 1.12)  # spans just under to just over the tank
+        odo = anchor["odometer"] + gal * rng.uniform(3.0, 4.3)  # low mpg, above the floor
+        emit(d, secs(night_ts), hub_i, "diesel", gal, odo, "manual", 1, "evasive")
 
     df = pd.DataFrame(rows, columns=_RAW_COLS)
     return df.sort_values("ts").reset_index(drop=True)

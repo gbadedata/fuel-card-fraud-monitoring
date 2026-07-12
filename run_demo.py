@@ -62,8 +62,8 @@ def main() -> None:
             shown += 1
         if shown >= 5:
             break
-    print("\nThe soft off-route rule trades precision for reach; combining these signals "
-          "in a\nsupervised model, and pricing alerts by dollars at risk, is the next step.")
+    print("\nThe soft off-route rule trades precision for reach. The model layer that ranks "
+          "the\nsofter cases and prices alerts by dollars at risk is in run_model.py.")
 
 
 if __name__ == "__main__":

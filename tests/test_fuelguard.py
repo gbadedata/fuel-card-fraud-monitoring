@@ -8,7 +8,15 @@ knowledge of a card's later activity.
 import numpy as np
 import pandas as pd
 
-from fuelguard import features, fuel_data, metrics, model, rules, scoring
+from fuelguard import (
+    features,
+    fuel_data,
+    investigation,
+    metrics,
+    model,
+    rules,
+    scoring,
+)
 
 
 def _frame():
@@ -146,3 +154,15 @@ def test_value_at_budget_is_monotone():
     vb = metrics.value_at_budget(test, "exp_loss", fractions=(0.01, 0.05, 0.1, 0.2))
     r = vb["fraud_value_recall"].to_numpy()
     assert all(r[i] <= r[i + 1] + 1e-9 for i in range(len(r) - 1))
+
+
+def test_investigation_queries_run(tmp_path):
+    df = fuel_data.mock_fuel_frame(n_fleets=12, days=45, seed=5)
+    csv = tmp_path / "feed.csv"
+    df.to_csv(csv, index=False)
+    res = investigation.run(csv)
+    assert set(res) == {"impossible_travel", "tank_overflow", "wrong_or_non_fuel",
+                        "off_route_cards", "rapid_repeat", "overnight_manual_high"}
+    # queries mapping to unambiguous injected fraud should surface something
+    assert len(res["impossible_travel"][1]) > 0
+    assert len(res["tank_overflow"][1]) > 0

@@ -175,14 +175,37 @@ would have.
 - The review queue is the analyst's day, ordered so the largest exposures surface first.
 - The rule thresholds sit in one block, tuned and audited rather than buried in code.
 
+## Investigation queries
+
+Behind every alert is an analyst asking why. The queries in `sql/investigation.sql` run
+over the raw feed with DuckDB and answer the questions an investigator actually asks. None
+of them uses the fraud label; they surface the behaviour and leave the judgement to a
+person. Run them with `python scripts/run_investigation.py`.
+
+- **impossible_travel** pairs each swipe with the card's previous one and flags legs whose
+  implied speed a truck cannot make.
+- **tank_overflow** lists fills whose gallons exceed the truck's tank.
+- **wrong_or_non_fuel** rolls up gasoline and non-fuel purchases per card.
+- **off_route_cards** ranks cards by how far their fills stray from their own centre
+  relative to their normal spread.
+- **rapid_repeat** finds swipes minutes apart at the same site.
+- **overnight_manual_high** surfaces the evasive profile directly: a near-tank, overnight,
+  hand-keyed fill well above the card's average spend.
+
+The impossible-travel query on the mock returns legs like a card in Oakland and then
+Orlando forty minutes later, an implied four thousand miles an hour:
+
+```
+card_id  from_hub   to_hub                ts  miles  hours  implied_mph
+ C00084   Oakland  Orlando  2024-01-25 22:07   2429   0.56         4331
+ C00162   Atlanta  Seattle  2024-01-14 15:45   2178   0.51         4278
+```
+
 ## Roadmap
 
 The rules engine, the model, the decision path, the cost-ranked queue, and the evaluation
 above are all in place. Still to come:
 
-- **Investigation SQL.** Analyst queries over the raw feed for the pattern behind an alert:
-  a card's fills either side of a flagged swipe, a fleet's overnight manual entries, the
-  sites where off-route fills cluster.
 - **Score calibration.** The model ranks well; before its output is read as a probability
   rather than a rank, it should be calibrated, and that calibration checked over time.
 - **Threshold tuning by cost.** The decline and step-up cut-offs are set sensibly; tying
@@ -206,6 +229,7 @@ pip install -e ".[dev]"
 make test                     # includes the no-lookahead guard
 python run_demo.py            # features and the rules engine
 python run_model.py           # model, decision, queue, and the evaluation above
+python scripts/run_investigation.py   # the analyst queries over the raw feed
 python scripts/make_figures.py
 ```
 
@@ -222,10 +246,14 @@ With no feed present, everything runs on the mock. To score your own data, drop 
 │   ├── rules.py         # transparent rules and velocity engine with reasons
 │   ├── model.py         # time-split, class-weighted gradient boosting
 │   ├── scoring.py       # decision (approve/step up/decline) + cost-ranked queue
-│   └── metrics.py       # PR-AUC, per-typology recall, value at budget
-├── tests/               # leakage guard, feature checks, rule and model coverage
+│   ├── metrics.py       # PR-AUC, per-typology recall, value at budget
+│   └── investigation.py # runs the analyst SQL over a feed
+├── sql/
+│   └── investigation.sql  # six DuckDB investigation queries
+├── tests/               # leakage guard, feature checks, rule, model, SQL coverage
 ├── scripts/
-│   └── make_figures.py  # README figures
+│   ├── make_figures.py       # README figures
+│   └── run_investigation.py  # print the investigation results
 ├── run_demo.py          # rules-layer report on the data
 ├── run_model.py         # model, decision, queue, and evaluation
 ├── data/README.md       # input format

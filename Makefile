@@ -1,4 +1,4 @@
-.PHONY: install test lint demo model figures
+.PHONY: install test lint demo model figures investigate
 install:
 	pip install -e ".[dev]"
 test:
@@ -11,3 +11,5 @@ model:
 	python run_model.py
 figures:
 	python scripts/make_figures.py
+investigate:
+	python scripts/run_investigation.py
